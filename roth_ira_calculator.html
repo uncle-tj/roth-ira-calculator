@@ -1,0 +1,234 @@
+<!-- Start of Roth IRA Calculator Block -->
+<!-- Instructions: Copy and paste this entire block into a "Custom HTML" block in your WordPress editor. -->
+
+<!-- Load Google Font & Tailwind CSS -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+
+<!-- Main App Container -->
+<div id="roth-ira-calculator-embed-wrapper" style="font-family: 'Inter', sans-serif;" class="bg-gray-900 text-white flex justify-center items-center py-8">
+
+    <div class="w-full max-w-4xl p-4 md:p-8 bg-gray-800 rounded-2xl shadow-2xl border border-gray-700">
+        <div class="text-center mb-8">
+            <h1 class="text-3xl md:text-4xl font-bold text-cyan-400">Roth IRA Growth Calculator</h1>
+            <p class="text-gray-400 mt-2">Visualize the power of compound interest for your retirement.</p>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            <div>
+                <label for="annualContribution-wp" class="block text-sm font-medium text-gray-300 mb-2">Annual Contribution ($)</label>
+                <input type="number" id="annualContribution-wp" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-3 text-white focus:ring-2 focus:ring-cyan-500 focus:outline-none" value="6000">
+            </div>
+            <div>
+                <label for="interestRate-wp" class="block text-sm font-medium text-gray-300 mb-2">Average Annual Return (%)</label>
+                <input type="number" id="interestRate-wp" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-3 text-white focus:ring-2 focus:ring-cyan-500 focus:outline-none" value="8">
+            </div>
+            <div>
+                <label for="years-wp" class="block text-sm font-medium text-gray-300 mb-2">Years to Grow</label>
+                <input type="number" id="years-wp" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-3 text-white focus:ring-2 focus:ring-cyan-500 focus:outline-none" value="30">
+            </div>
+        </div>
+        
+        <div class="text-center mb-8">
+            <button id="calculateBtn-wp" class="bg-cyan-500 hover:bg-cyan-600 text-white font-bold py-3 px-8 rounded-lg shadow-lg transition-transform transform hover:scale-105">
+                Calculate Growth
+            </button>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8 text-center">
+            <div class="bg-gray-700 p-4 rounded-lg">
+                <h3 class="text-lg font-semibold text-gray-400">Total Contributions</h3>
+                <p id="totalContributions-wp" class="text-2xl font-bold text-cyan-400">$0</p>
+            </div>
+            <div class="bg-gray-700 p-4 rounded-lg">
+                <h3 class="text-lg font-semibold text-gray-400">Total Interest Earned</h3>
+                <p id="totalInterest-wp" class="text-2xl font-bold text-green-400">$0</p>
+            </div>
+            <div class="bg-gray-700 p-4 rounded-lg">
+                <h3 class="text-lg font-semibold text-gray-400">Future Value</h3>
+                <p id="futureValue-wp" class="text-3xl font-bold text-white">$0</p>
+            </div>
+        </div>
+
+        <div id="phaser-container-wp" class="w-full h-96 bg-gray-900 rounded-lg border border-gray-700 overflow-hidden"></div>
+    </div>
+</div>
+
+<!-- Load Phaser JS and App Logic -->
+<script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.min.js"></script>
+<script>
+    (function() {
+        // Self-contained function to initialize the calculator.
+        // This prevents conflicts with other scripts on the page.
+        const initRothCalculator = () => {
+            const phaserContainer = document.getElementById('phaser-container-wp');
+            
+            // Prevent re-initialization if the script is loaded multiple times
+            if (!phaserContainer || phaserContainer.childElementCount > 0) {
+                return;
+            }
+
+            // --- Main Scene for Phaser ---
+            class RothCalcScene extends Phaser.Scene {
+                constructor() {
+                    super({ key: 'RothCalcScene' });
+                    this.chartGraphics = null;
+                    this.yearLabels = [];
+                    this.valueLabels = [];
+                    this.infoText = null;
+                }
+
+                create() {
+                    this.chartGraphics = this.add.graphics();
+                    this.infoText = this.add.text(this.scale.width / 2, this.scale.height / 2, 'Enter values and click "Calculate"', {
+                        fontSize: '20px', fill: '#9CA3AF', fontFamily: 'Inter, sans-serif'
+                    }).setOrigin(0.5);
+
+                    document.getElementById('calculateBtn-wp').addEventListener('click', () => {
+                        this.calculateAndDraw();
+                    });
+
+                    this.calculateAndDraw();
+                }
+
+                calculateAndDraw() {
+                    if(this.infoText) {
+                        this.infoText.destroy();
+                        this.infoText = null;
+                    }
+
+                    const annualContribution = parseFloat(document.getElementById('annualContribution-wp').value) || 0;
+                    const interestRate = parseFloat(document.getElementById('interestRate-wp').value) / 100 || 0;
+                    const years = parseInt(document.getElementById('years-wp').value) || 0;
+                    
+                    this.clearChart();
+
+                    if (years <= 0 || annualContribution <= 0) {
+                        this.updateResultDisplay(0, 0, 0);
+                        this.infoText = this.add.text(this.scale.width / 2, this.scale.height / 2, 'Please enter positive values to calculate.', {
+                            fontSize: '18px', fill: '#F87171'
+                        }).setOrigin(0.5);
+                        return;
+                    }
+
+                    const dataPoints = this.calculateGrowth(annualContribution, interestRate, years);
+                    const finalData = dataPoints[dataPoints.length - 1];
+                    this.updateResultDisplay(finalData.futureValue, finalData.totalContributions, finalData.totalInterest);
+                    this.drawChart(dataPoints, years);
+                }
+
+                calculateGrowth(annualContribution, r, n) {
+                    let data = [];
+                    let futureValue = 0;
+                    let totalContributions = 0;
+                    for (let i = 1; i <= n; i++) {
+                        futureValue = (futureValue + annualContribution) * (1 + r);
+                        totalContributions += annualContribution;
+                        data.push({
+                            year: i, futureValue: futureValue, totalContributions: totalContributions, totalInterest: futureValue - totalContributions
+                        });
+                    }
+                    if (n === 0) {
+                       data.push({ year: 0, futureValue: 0, totalContributions: 0, totalInterest: 0 });
+                    }
+                    return data;
+                }
+
+                updateResultDisplay(futureValue, contributions, interest) {
+                    const formatter = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
+                    document.getElementById('futureValue-wp').textContent = formatter.format(futureValue);
+                    document.getElementById('totalContributions-wp').textContent = formatter.format(contributions);
+                    document.getElementById('totalInterest-wp').textContent = formatter.format(interest);
+                }
+                
+                clearChart() {
+                    this.chartGraphics.clear();
+                    this.yearLabels.forEach(label => label.destroy());
+                    this.yearLabels = [];
+                    this.valueLabels.forEach(label => label.destroy());
+                    this.valueLabels = [];
+                    if (this.infoText) {
+                        this.infoText.destroy();
+                        this.infoText = null;
+                    }
+                }
+
+                drawChart(data, totalYears) {
+                    const chart = this.chartGraphics;
+                    const chartWidth = this.scale.width * 0.9;
+                    const chartHeight = this.scale.height * 0.8;
+                    const startX = (this.scale.width - chartWidth) / 2;
+                    const startY = this.scale.height - (this.scale.height - chartHeight) / 2;
+                    const barWidth = Math.max(1, chartWidth / data.length);
+                    const maxFutureValue = data[data.length - 1].futureValue;
+                    if (maxFutureValue === 0) return;
+
+                    const numLines = 5;
+                    chart.lineStyle(1, 0x4B5563, 0.5);
+                    for (let i = 0; i <= numLines; i++) {
+                        const y = startY - (chartHeight / numLines) * i;
+                        chart.beginPath();
+                        chart.moveTo(startX, y);
+                        chart.lineTo(startX + chartWidth, y);
+                        chart.closePath();
+                        chart.strokePath();
+                        const labelValue = (maxFutureValue / numLines) * i;
+                        this.add.text(startX - 10, y, `${(labelValue/1000).toFixed(0)}k`, {
+                            fontSize: '12px', fill: '#9CA3AF', align: 'right'
+                        }).setOrigin(1, 0.5);
+                    }
+
+                    data.forEach((point, index) => {
+                        const contributionHeight = (point.totalContributions / maxFutureValue) * chartHeight;
+                        const interestHeight = (point.totalInterest / maxFutureValue) * chartHeight;
+                        chart.fillStyle(0x22d3ee, 1);
+                        chart.fillRect(startX + index * barWidth, startY - contributionHeight, barWidth * 0.9, contributionHeight);
+                        chart.fillStyle(0x4ade80, 1);
+                        chart.fillRect(startX + index * barWidth, startY - contributionHeight - interestHeight, barWidth * 0.9, interestHeight);
+                        const labelInterval = Math.ceil(totalYears / 10);
+                        if ((point.year - 1) % labelInterval === 0 || point.year === totalYears) {
+                            const label = this.add.text(startX + index * barWidth + (barWidth * 0.45), startY + 15, `Yr ${point.year}`, {
+                                fontSize: '12px', fill: '#9CA3AF'
+                            }).setOrigin(0.5);
+                            this.yearLabels.push(label);
+                        }
+                    });
+
+                    chart.fillStyle(0x22d3ee, 1);
+                    chart.fillRect(startX, 10, 15, 15);
+                    this.add.text(startX + 20, 12, 'Contributions', { fontSize: '14px', fill: '#D1D5DB' });
+                    chart.fillStyle(0x4ade80, 1);
+                    chart.fillRect(startX + 140, 10, 15, 15);
+                    this.add.text(startX + 160, 12, 'Interest', { fontSize: '14px', fill: '#D1D5DB' });
+                }
+            }
+
+            // --- Phaser Game Configuration ---
+            const config = {
+                type: Phaser.AUTO,
+                width: 896,
+                height: 384,
+                parent: 'phaser-container-wp', // Use the unique ID for WordPress
+                scene: [RothCalcScene],
+                backgroundColor: '#111827',
+                scale: {
+                    mode: Phaser.Scale.FIT,
+                    autoCenter: Phaser.Scale.CENTER_BOTH
+                }
+            };
+
+            // --- Initialize the Game ---
+            new Phaser.Game(config);
+        };
+
+        // Wait for the DOM to be fully loaded before initializing to avoid errors.
+        if (document.readyState === 'complete' || (document.readyState !== 'loading' && !document.documentElement.doScroll)) {
+          initRothCalculator();
+        } else {
+          document.addEventListener('DOMContentLoaded', initRothCalculator);
+        }
+    })();
+</script>
+<!-- End of Roth IRA Calculator Block -->
